@@ -3,8 +3,9 @@
  * Life-hours (Becker's "full price", in hours):
  *   lifeHours = time spent + (price ÷ hourly rate)
  * Hourly rate:
- *   job  → take-home £ per hour
- *   loan → weekly budget ÷ waking hours per week
+ *   job  → take-home £ per hour (pounds cost the hours you worked for them)
+ *   loan → weekly budget ÷ FREE hours per week (your budget pays for your free time,
+ *          so spending all of it = your whole free week, and the dots and money agree)
  */
 (function (root) {
   const HOURS_PER_WEEK = 168;
@@ -26,7 +27,11 @@
 
   function hourlyRate(p) {
     if (p.mode === 'job') return p.takeHomeHourly;
-    if (p.mode === 'loan') return p.weeklyBudget / wakingHoursPerWeek(p);
+    if (p.mode === 'loan') {
+      const free = freeHoursPerWeek(p);
+      if (!(free > 0)) throw new Error('No free hours to spread the budget over');
+      return p.weeklyBudget / free;
+    }
     throw new Error('Unknown funding mode: ' + p.mode);
   }
 

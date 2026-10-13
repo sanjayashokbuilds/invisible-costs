@@ -14,12 +14,20 @@ const near = (a, b, tol = 0.01) => assert.ok(Math.abs(a - b) < tol, `${a} is not
 
 console.log('Life-hours maths');
 const worker = { mode: 'job', takeHomeHourly: 12, sleepHoursPerNight: 8, lectureHoursPerWeek: 12, workHoursPerWeek: 10, otherHoursPerWeek: 20 };
-const loanee = { mode: 'loan', weeklyBudget: 112, sleepHoursPerNight: 8, lectureHoursPerWeek: 12, workHoursPerWeek: 0, otherHoursPerWeek: 20 };
+const loanee = { mode: 'loan', weeklyBudget: 80, sleepHoursPerNight: 8, lectureHoursPerWeek: 12, workHoursPerWeek: 0, otherHoursPerWeek: 20 };
 
 test('waking hours = 168 − 7 × sleep', () => assert.equal(calc.wakingHoursPerWeek(worker), 112));
 test('free hours subtracts commitments', () => assert.equal(calc.freeHoursPerWeek(worker), 70));
 test('job rate = take-home wage', () => assert.equal(calc.hourlyRate(worker), 12));
-test('loan rate = weekly budget ÷ waking hours', () => assert.equal(calc.hourlyRate(loanee), 1));
+test('loan rate = weekly budget ÷ free hours', () => assert.equal(calc.hourlyRate(loanee), 1));
+test('spending your whole weekly budget = your whole free week', () => {
+  const r = calc.hourlyRate(loanee);
+  assert.equal(80 / r, calc.freeHoursPerWeek(loanee));
+});
+test('£20 on a £120 budget with 78 free hours = 13 life-hours of money', () => {
+  const p = { mode: 'loan', weeklyBudget: 120, sleepHoursPerNight: 8, lectureHoursPerWeek: 20, workHoursPerWeek: 0, otherHoursPerWeek: 14 };
+  near(20 / calc.hourlyRate(p), 13);
+});
 test('clubbing: 5h + £20 at £12/h = 6.67 life-hours', () => near(calc.lifeHours(20, 5, 12), 6.67));
 test('gaming: 4h, £0 = 4 life-hours', () => assert.equal(calc.lifeHours(0, 4, 12), 4));
 test('breakdown splits doing vs paying', () => {

@@ -201,7 +201,7 @@
     const b = calc.lifeHoursBreakdown(EXAMPLE.price, EXAMPLE.hours, rate);
     const exampleDots = Math.min(free, Math.round(b.total));
     const pct = Math.round(100 * b.total / free);
-    const payingLabel = draft.mode === 'job' ? 'working to pay' : 'of your budget';
+    const payingLabel = draft.mode === 'job' ? 'working to pay' : 'of your money';
     render(`
       <section class="screen">
         ${steps(4)}
@@ -210,7 +210,7 @@
           <div class="big-number">${free}<small>free hours</small></div>
           ${dotsHtml(free, { preview: exampleDots, reveal: true })}
           <div class="fade-late" style="--delay:${Math.min(free * 18, 900) + 400}ms">
-            <p style="margin:0 0 10px">Every hour you spend is one of these. So is every pound, because it took time to earn. Take ${EXAMPLE.label}:</p>
+            <p style="margin:0 0 10px">Every hour you spend is one of these. So is every pound, ${draft.mode === 'job' ? 'because it took time to earn' : 'because your money is what pays for this free time'}. Take ${EXAMPLE.label}:</p>
             <div class="equation" aria-label="${fmtHours(b.doing)} doing it plus ${fmtHours(b.paying)} ${payingLabel} equals ${fmtHours(b.total)}">
               <div class="part"><div class="n">${fmtHours(b.doing)}</div><div class="l">doing it</div></div>
               <div class="op">+</div>
@@ -218,7 +218,7 @@
               <div class="op">=</div>
               <div class="part"><div class="n">${fmtHours(b.total)}</div><div class="l">life-hours</div></div>
             </div>
-            <p class="fine">That’s ${pct}% of your free week — the dots breathing above.</p>
+            <p class="fine">${pct >= 100 ? 'That’s more than your whole free week.' : 'That’s ' + pct + '% of your free week — the dots breathing above.'}</p>
           </div>
         </div>
         <div class="screen-foot fade-late" style="--delay:${Math.min(free * 18, 900) + 900}ms">
