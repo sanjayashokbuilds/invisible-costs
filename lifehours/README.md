@@ -2,6 +2,8 @@
 
 _Draft — filled in as we build._
 
+**Live:** https://life-hours.netlify.app
+
 ## The problem
 ## What we built
 ## How it works

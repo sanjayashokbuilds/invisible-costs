@@ -636,6 +636,8 @@
               <p class="fine" style="margin:2px 0 10px">${shortcutUrl ? 'Opens Shortcuts. Tap <em>Add Shortcut</em>.' : 'Do this once.'}</p>
               ${shortcutUrl
                 ? `<a class="btn btn-primary btn-sm" id="add" href="${esc(shortcutUrl)}">Add to Shortcuts</a>`
+                : location.protocol === 'file:'
+                ? `<p class="essential-note" style="margin:0">Put Life-hours online first (for example on Netlify), then open it from that link. The shortcut needs a web address your phone can reach, not a file on this computer.</p>`
                 : `<details class="build-own">
                     <summary>How to build it (2 minutes)</summary>
                     <ol>
