@@ -313,3 +313,6 @@ button { font: inherit; color: inherit; }
 .btn-sm { display: inline-block; padding: 11px 18px; font-size: 15px; text-decoration: none; }
 .btn-ghost { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
 a.btn-primary { color: var(--paper); }
+.build-own summary { cursor: pointer; color: var(--ink); font-size: 15px; padding: 4px 0; }
+.build-own ol { padding-left: 20px; font-size: 15px; color: var(--ink-soft); margin: 10px 0; }
+.build-own li { margin-bottom: 6px; }

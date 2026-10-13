@@ -17,7 +17,8 @@
     sleepHoursPerNight: 8,
     lectureHoursPerWeek: 20,
     workHoursPerWeek: 0,
-    otherHoursPerWeek: 14,
+    basicsHoursPerDay: 2,      // cooking, eating, getting ready, getting around
+    otherHoursPerWeek: 14,     // = basicsHoursPerDay × 7, used by calc.js
   };
 
   // The reveal example: a typical night out
@@ -167,7 +168,7 @@
       { key: 'sleepHoursPerNight', label: 'Sleep', sub: 'hours a night', step: 0.5, min: 4, max: 12 },
       { key: 'lectureHoursPerWeek', label: 'Lectures and study', sub: 'hours a week', step: 1, min: 0, max: 80 },
       { key: 'workHoursPerWeek', label: 'Paid work', sub: 'hours a week', step: 1, min: 0, max: 60 },
-      { key: 'otherHoursPerWeek', label: 'Other must-dos', sub: 'cooking, chores, travel', step: 1, min: 0, max: 80 },
+      { key: 'basicsHoursPerDay', label: 'Daily basics', sub: 'cooking, eating, getting ready, travel — hours a day', step: 0.5, min: 0, max: 8 },
     ];
     render(`
       <section class="screen">
@@ -208,6 +209,7 @@
         const r = rows.find(x => x.key === b.dataset.key);
         const v = Math.min(r.max, Math.max(r.min, draft[r.key] + r.step * Number(b.dataset.d)));
         draft[r.key] = v;
+        draft.otherHoursPerWeek = draft.basicsHoursPerDay * 7;
         app.querySelector('#o-' + r.key).textContent = v;
         update();
       };
@@ -631,10 +633,19 @@
             <span class="setup-n">1</span>
             <div>
               <strong>Add the shortcut</strong>
-              <p class="fine" style="margin:2px 0 10px">Opens Shortcuts. Tap <em>Add Shortcut</em>.</p>
+              <p class="fine" style="margin:2px 0 10px">${shortcutUrl ? 'Opens Shortcuts. Tap <em>Add Shortcut</em>.' : 'Do this once.'}</p>
               ${shortcutUrl
                 ? `<a class="btn btn-primary btn-sm" id="add" href="${esc(shortcutUrl)}">Add to Shortcuts</a>`
-                : `<p class="fine" style="margin:0">The shortcut link hasn’t been set yet (see <code>js/config.js</code>).</p>`}
+                : `<details class="build-own">
+                    <summary>How to build it (2 minutes)</summary>
+                    <ol>
+                      <li>New shortcut, named <em>Life-hours</em>.</li>
+                      <li>Add <em>Text</em> and paste the link below, then replace <em>[Merchant]</em> and <em>[Amount]</em> with the <em>Shortcut Input</em> Merchant and Amount variables.</li>
+                      <li>Add <em>Open URLs</em>.</li>
+                    </ol>
+                    <code class="url-box">${esc(appUrl())}?merchant=[Merchant]&amp;amount=[Amount]</code>
+                    <button class="btn btn-ghost btn-sm" id="copy">Copy the link</button>
+                  </details>`}
             </div>
           </div>
 
@@ -652,6 +663,11 @@
         </div>
       </section>`);
     app.querySelector('#back').onclick = () => screenHome();
+    const copy = app.querySelector('#copy');
+    if (copy) copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(appUrl() + '?merchant=[Merchant]&amount=[Amount]'); copy.textContent = 'Copied'; }
+      catch (err) { copy.textContent = 'Press and hold the link to copy it'; }
+    };
     // Goes through the real link, exactly as the shortcut would
     app.querySelector('#try').onclick = () => {
       location.href = appUrl() + '?merchant=' + encodeURIComponent('PRET A MANGER 0142') + '&amount=' + encodeURIComponent('£8.50') + '&demo=1';
