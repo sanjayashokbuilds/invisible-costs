@@ -1,0 +1,6 @@
+/* styles.css — mobile-first. Colours and type are set once the visual direction is chosen. */
+:root {
+  --bg: #ffffff;
+  --text: #111111;
+}
+body { margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
