@@ -5,7 +5,7 @@
   const KEY = 'lifehours.v1';
 
   function emptyState() {
-    return { profile: null, logs: [] };
+    return { profile: null, logs: [], overrides: {} };
   }
 
   function load() {

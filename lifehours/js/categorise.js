@@ -19,12 +19,13 @@
 
   // ratingDelay: minutes after logging, or 'nextMorning' (11:00 the next day)
   const CATEGORIES = [
-    { id: 'shopping', label: 'Shopping', ratingDelay: 2 * DAY },
-    { id: 'active', label: 'Active', ratingDelay: 60 },
-    { id: 'screen', label: 'Screen time', ratingDelay: 30 },
-    { id: 'social', label: 'Social & going out', ratingDelay: 'nextMorning' },
-    { id: 'food', label: 'Food & drink', ratingDelay: 120 },
-    { id: 'other', label: 'Everything else', ratingDelay: 180 },
+    // defaultHours: the duration pre-filled on the log screen
+    { id: 'shopping', label: 'Shopping', ratingDelay: 2 * DAY, defaultHours: 0.5 },
+    { id: 'active', label: 'Active', ratingDelay: 60, defaultHours: 1.5 },
+    { id: 'screen', label: 'Screen time', ratingDelay: 30, defaultHours: 1 },
+    { id: 'social', label: 'Social & going out', ratingDelay: 'nextMorning', defaultHours: 4 },
+    { id: 'food', label: 'Food & drink', ratingDelay: 120, defaultHours: 0.5 },
+    { id: 'other', label: 'Everything else', ratingDelay: 180, defaultHours: 1 },
   ].map(c => ({ ...c, keywords: KW[c.id] || [] }));
 
   // Essentials (rent, groceries, bills…) are recognised but not tracked: no opportunity cost to reveal
