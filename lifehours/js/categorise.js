@@ -79,9 +79,13 @@
     return { category: 'other', essential: false, matched: null };
   }
 
+  // testDelayMinutes: when set, every rating comes due this many minutes after logging (for testing)
+  const settings = { testDelayMinutes: null };
+
   function ratingDueAt(categoryId, loggedAt) {
-    const delay = BY_ID[categoryId].ratingDelay;
     const t = new Date(loggedAt);
+    if (settings.testDelayMinutes != null) return new Date(t.getTime() + settings.testDelayMinutes * 60 * 1000);
+    const delay = BY_ID[categoryId].ratingDelay;
     if (delay === 'nextMorning') {
       const due = new Date(t);
       due.setDate(due.getDate() + 1);
@@ -92,5 +96,5 @@
   }
 
   root.LH = root.LH || {};
-  root.LH.categories = { CATEGORIES, BY_ID, categorise, ratingDueAt };
+  root.LH.categories = { CATEGORIES, BY_ID, categorise, ratingDueAt, settings };
 })(typeof window !== 'undefined' ? window : globalThis);

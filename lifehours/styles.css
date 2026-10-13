@@ -7,9 +7,10 @@
   --ink: #1d2b2f;        /* deep slate text */
   --ink-soft: #5d6b6e;   /* secondary text */
   --line: #dde3e1;       /* hairlines, empty dots */
-  --spent: #3f6f63;      /* spent hours: deep sage */
-  --regret: #a3577a;     /* regretted hours: dusty plum */
-  --focus: #3f6f63;
+  --worth: #3f9461;      /* hours you were glad you spent: green */
+  --regret: #d0493f;     /* regretted hours: red */
+  --pending: #b9c3c0;    /* spent, waiting for a rating */
+  --focus: #3f9461;
 
   --dot: 14px;
   --gap: 8px;
@@ -153,7 +154,7 @@ button { font: inherit; color: inherit; }
   display: flex; align-items: baseline; justify-content: space-between;
 }
 .live-total .n { font-size: 28px; font-weight: 300; }
-.error { color: var(--regret); font-size: 15px; margin-top: 10px; min-height: 1.5em; }
+.error { color: #b23a31; font-size: 15px; margin-top: 10px; min-height: 1.5em; }
 
 /* ---------- The dots ---------- */
 .dots {
@@ -168,8 +169,10 @@ button { font: inherit; color: inherit; }
   box-shadow: inset 0 0 0 1.5px var(--line);
   transition: background .5s var(--ease), box-shadow .5s var(--ease), transform .5s var(--ease);
 }
-.dot.spent  { background: var(--spent);  box-shadow: none; }
-.dot.regret { background: var(--regret); box-shadow: none; }
+.dot.worth   { background: var(--worth);   box-shadow: none; }
+.dot.pending { background: var(--pending); box-shadow: none; }
+/* Regret also differs by shape (a ring with a hole), so it reads without colour */
+.dot.regret  { background: radial-gradient(circle, var(--paper) 0 26%, var(--regret) 28%); box-shadow: none; }
 .dot.preview { box-shadow: inset 0 0 0 1.5px var(--ink); animation: breathe 2.4s var(--ease) infinite; }
 
 .dots.reveal .dot { animation: dot-in .5s var(--ease) both; animation-delay: calc(var(--i) * 18ms); }
@@ -186,8 +189,8 @@ button { font: inherit; color: inherit; }
   50%      { transform: scale(.72); }
 }
 
-.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 14px; color: var(--ink-soft); }
-.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 14px; color: var(--ink-soft); }
+.legend .dot { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
 
 /* Life-hours breakdown on the reveal screen */
 .equation {
@@ -273,3 +276,18 @@ button { font: inherit; color: inherit; }
   8%, 85% { opacity: 1; transform: translate(-50%, 0); }
   100% { opacity: 0; transform: translate(-50%, 0); }
 }
+
+/* ---------- Rating gate ---------- */
+.rating { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 8px; }
+.rate-btn {
+  appearance: none; cursor: pointer;
+  aspect-ratio: 1; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--surface);
+  font-size: 20px; font-weight: 400; color: var(--ink);
+  transition: background .25s var(--ease), color .25s var(--ease), transform .25s var(--ease), border-color .25s;
+}
+.rate-btn:active { transform: scale(.94); }
+.rate-btn[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); transform: scale(1.06); }
+.rate-btn:disabled { cursor: default; }
+.rating-ends { display: flex; justify-content: space-between; margin-top: 12px; }
+.dots.recolour .dot { transition: background .45s var(--ease), box-shadow .45s; transition-delay: calc(var(--i) * 45ms); }

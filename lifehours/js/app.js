@@ -3,6 +3,10 @@
   const { calc, storage, categories } = LH;
   const app = document.getElementById('app');
   let state = storage.load();
+  let currentScreen = null;
+
+  // TESTING: ratings come due 2 minutes after logging. Set to null for real delays.
+  categories.settings.testDelayMinutes = 2;
 
   // Onboarding answers, kept until the profile is saved
   const draft = {
@@ -42,18 +46,33 @@
 
   // dots: total free hours; filled = hours spent; regret = how many of those were regretted
   // fresh: index from which spent dots are new, so they fill in one by one
-  function dotsHtml(total, { spent = 0, regret = 0, preview = 0, reveal = false, fresh = null } = {}) {
+  // Dots in order: worth it (green), regretted (red), waiting for a rating (grey), still yours (outline)
+  function dotsHtml(total, { worth = 0, regret = 0, pending = 0, preview = 0, reveal = false, fresh = null } = {}) {
+    const a = worth, b = a + regret, c = b + pending;
     let html = '';
     for (let i = 0; i < total; i++) {
       let cls = 'dot';
-      if (i < regret) cls += ' regret';
-      else if (i < spent) cls += ' spent';
-      else if (i < spent + preview) cls += ' preview';
-      if (fresh != null && i >= fresh && i < spent) cls += ' fresh';
+      if (i < a) cls += ' worth';
+      else if (i < b) cls += ' regret';
+      else if (i < c) cls += ' pending';
+      else if (i < c + preview) cls += ' preview';
+      if (fresh != null && i >= fresh && i < c) cls += ' fresh';
       html += '<span class="' + cls + '" style="--i:' + i + ';--j:' + (fresh != null ? i - fresh : 0) + '"></span>';
     }
-    return '<div class="dots' + (reveal ? ' reveal' : '') + '" role="img" aria-label="' +
-      total + ' free hours, ' + spent + ' spent">' + html + '</div>';
+    const label = total + ' free hours: ' + worth + ' worth it, ' + regret + ' regretted, ' + pending + ' not rated yet';
+    return '<div class="dots' + (reveal ? ' reveal' : '') + '" role="img" aria-label="' + label + '">' + html + '</div>';
+  }
+
+  // This week's hours split by rating, rounded to whole dots and capped at the free week
+  function weekDots(free) {
+    const week = calc.logsThisWeek(state.logs, new Date());
+    const hrs = pred => week.filter(pred).reduce((s, l) => s + l.lifeHours, 0);
+    let left = free;
+    const take = h => { const n = Math.min(left, Math.round(h)); left -= n; return n; };
+    const worth = take(hrs(l => typeof l.rating === 'number' && !calc.isRegret(l)));
+    const regret = take(hrs(calc.isRegret));
+    const pending = take(hrs(l => typeof l.rating !== 'number'));
+    return { worth, regret, pending, total: worth + regret + pending };
   }
 
   // ---------- Onboarding ----------
@@ -237,18 +256,16 @@
   }
 
   // ---------- Home ----------
-  function spentDots(free) {
-    return Math.min(free, Math.round(calc.hoursUsedThisWeek(state.logs, new Date())));
-  }
-
   function screenHome({ freshFrom = null, toast = '' } = {}) {
+    // Rating gate: anything due gets rated before you see home or log something new
+    if (calc.ratingsDue(state.logs, new Date()).length) return screenRating();
+    currentScreen = 'home';
     const p = state.profile;
     const now = new Date();
     const free = Math.round(calc.freeHoursPerWeek(p));
     const week = calc.logsThisWeek(state.logs, now)
       .sort((a, b) => new Date(b.loggedAt) - new Date(a.loggedAt));
     const used = calc.hoursUsedThisWeek(state.logs, now);
-    const regretWeek = week.filter(calc.isRegret).reduce((a, l) => a + l.lifeHours, 0);
     const ledger = calc.regretLedger(state.logs);
     const left = Math.max(0, free - used);
     const over = used - free;
@@ -261,11 +278,12 @@
         <div class="screen-body">
           <div class="big-number">${Math.round(left)}<small>of ${free} free hours left</small></div>
           ${over > 0.5 ? `<p class="fine" style="margin:6px 0 0">You’re ${fmtHours(over)} past your free week.</p>` : ''}
-          ${dotsHtml(free, { spent: spentDots(free), regret: Math.min(free, Math.round(regretWeek)), fresh: freshFrom })}
+          ${dotsHtml(free, { ...weekDots(free), fresh: freshFrom })}
           <div class="legend">
-            <span><i style="background:var(--spent)"></i>Spent</span>
-            <span><i style="background:var(--regret)"></i>Regretted</span>
-            <span><i style="box-shadow:inset 0 0 0 1.5px var(--line)"></i>Still yours</span>
+            <span><i class="dot worth"></i>Worth it</span>
+            <span><i class="dot regret"></i>Regretted</span>
+            <span><i class="dot pending"></i>Unrated</span>
+            <span><i class="dot"></i>Still yours</span>
           </div>
           <div class="ledger">
             <span>
@@ -294,6 +312,7 @@
         <div class="screen-foot">
           <button class="btn btn-primary" id="log">Log something</button>
           <button class="btn btn-quiet" id="reset">Start over</button>
+          ${categories.settings.testDelayMinutes ? `<p class="fine" style="text-align:center;margin:0">Test mode: ratings are due ${categories.settings.testDelayMinutes} min after logging.</p>` : ''}
         </div>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
       </section>`);
@@ -313,6 +332,8 @@
 
   // ---------- Log something ----------
   function screenLog() {
+    if (calc.ratingsDue(state.logs, new Date()).length) return screenRating();
+    currentScreen = 'log';
     const p = state.profile;
     const rate = calc.hourlyRate(p);
     const free = Math.round(calc.freeHoursPerWeek(p));
@@ -461,7 +482,7 @@
 
     $('#save').onclick = () => {
       const now = new Date();
-      const before = spentDots(free);
+      const before = weekDots(free).total;
       const entry = {
         id: now.getTime().toString(36),
         activity: log.activity.trim(),
@@ -484,6 +505,83 @@
       screenHome({ freshFrom: before, toast: 'Logged. We’ll ask how it was ' + whenText(entry.ratingDueAt) + '.' });
     };
   }
+
+  // ---------- Rating gate ----------
+  let gateTotal = 0; // how many were due when the gate opened, for "1 of 3"
+
+  function screenRating() {
+    currentScreen = 'rating';
+    const due = calc.ratingsDue(state.logs, new Date())
+      .sort((a, b) => new Date(a.ratingDueAt) - new Date(b.ratingDueAt));
+    if (!due.length) { gateTotal = 0; return screenHome(); }
+    gateTotal = Math.max(gateTotal, due.length);
+    const log = due[0];
+    const position = gateTotal - due.length + 1;
+    const loggedTime = new Date(log.loggedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+    render(`
+      <section class="screen">
+        <header class="home-head">
+          <span class="fine">Before you carry on</span>
+          <span class="fine">${gateTotal > 1 ? position + ' of ' + gateTotal : ''}</span>
+        </header>
+        <div class="screen-body" id="rate-body">
+          <h1>How was ${esc(log.activity)}?</h1>
+          <p class="lede">You logged it at ${loggedTime}. It cost ${fmtHours(log.lifeHours)} of your life${log.price ? ', including £' + log.price.toFixed(2) : ''}.</p>
+          <div class="rating" role="radiogroup" aria-label="Rate it from 1 to 10">
+            ${Array.from({ length: 10 }, (_, i) => `<button class="rate-btn" role="radio" aria-checked="false" data-n="${i + 1}">${i + 1}</button>`).join('')}
+          </div>
+          <div class="rating-ends fine"><span>Regret it</span><span>Worth every minute</span></div>
+        </div>
+        <div class="screen-foot" id="rate-foot">
+          <button class="btn btn-quiet" id="delete">Delete this log</button>
+        </div>
+      </section>`);
+
+    app.querySelectorAll('.rate-btn').forEach(b => {
+      b.onclick = () => {
+        const n = Number(b.dataset.n);
+        app.querySelectorAll('.rate-btn').forEach(x => { x.disabled = true; x.setAttribute('aria-checked', x === b); });
+        log.rating = n;
+        log.ratedAt = new Date().toISOString();
+        storage.save(state);
+        setTimeout(() => showRatingResult(log), 350);
+      };
+    });
+    app.querySelector('#delete').onclick = () => {
+      state.logs = state.logs.filter(l => l !== log);
+      storage.save(state);
+      gateTotal = Math.max(0, gateTotal - 1);
+      screenRating();
+    };
+  }
+
+  function showRatingResult(log) {
+    const regret = calc.isRegret(log);
+    const ledger = calc.regretLedger(state.logs);
+    const n = Math.max(1, Math.min(60, Math.round(log.lifeHours)));
+    const more = calc.ratingsDue(state.logs, new Date()).length > 0;
+    app.querySelector('#rate-body').innerHTML = `
+      <h1>${regret ? 'Marked as regretted.' : 'Marked as worth it.'}</h1>
+      <p class="lede">${regret
+        ? 'These ' + fmtHours(log.lifeHours) + ' go on your regret ledger. That’s ' + fmtHours(ledger.hours) + ' in total now.'
+        : 'These ' + fmtHours(log.lifeHours) + ' were well spent. They’ll stay green on your week.'}</p>
+      <div class="dots recolour">${Array.from({ length: n }, (_, i) => `<span class="dot pending" style="--i:${i}"></span>`).join('')}</div>`;
+    app.querySelector('#rate-foot').innerHTML =
+      `<button class="btn btn-primary" id="next">${more ? 'Next' : 'Done'}</button>`;
+    // Let the grey dots paint first, then turn them one by one
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      app.querySelectorAll('.recolour .dot').forEach(d => { d.classList.remove('pending'); d.classList.add(regret ? 'regret' : 'worth'); });
+    }));
+    const next = app.querySelector('#next');
+    next.focus({ preventScroll: true });
+    next.onclick = () => screenRating();
+  }
+
+  // If something comes due while home is open, open the gate
+  setInterval(() => {
+    if (currentScreen === 'home' && calc.ratingsDue(state.logs, new Date()).length) screenRating();
+  }, 10000);
 
   // ---------- Start ----------
   if (state.profile) screenHome(); else screenHook();
