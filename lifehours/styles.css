@@ -316,3 +316,18 @@ a.btn-primary { color: var(--paper); }
 .build-own summary { cursor: pointer; color: var(--ink); font-size: 15px; padding: 4px 0; }
 .build-own ol { padding-left: 20px; font-size: 15px; color: var(--ink-soft); margin: 10px 0; }
 .build-own li { margin-bottom: 6px; }
+
+/* ---------- Track record, alternative, sample data, settings ---------- */
+.track { margin-top: 16px; }
+.track-title { margin: 0 0 8px; font-size: 15px; color: var(--ink-soft); }
+.track-row { display: flex; gap: 8px; align-items: center; }
+.rchip {
+  min-width: 34px; height: 34px; padding: 0 8px; border-radius: 999px;
+  display: grid; place-items: center; font-size: 15px; font-weight: 500; color: #fff;
+}
+.rchip.worth { background: var(--worth); }
+.rchip.regret { background: var(--regret); }
+.alternative { margin: -6px 0 14px; font-size: 15px; color: var(--ink-soft); }
+.demo-note { font-size: 14px; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; margin: 0 0 18px; }
+.choices-row { grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
+.choices-row .choice { padding: 14px 16px; text-align: center; }

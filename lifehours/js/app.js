@@ -21,6 +21,14 @@
     otherHoursPerWeek: 14,     // = basicsHoursPerDay × 7, used by calc.js
   };
 
+  // Free-week questions, shared by onboarding and Edit my numbers
+  const WEEK_ROWS = [
+    { key: 'sleepHoursPerNight', label: 'Sleep', sub: 'hours a night', step: 0.5, min: 4, max: 12 },
+    { key: 'lectureHoursPerWeek', label: 'Lectures and study', sub: 'hours a week', step: 1, min: 0, max: 80 },
+    { key: 'workHoursPerWeek', label: 'Paid work', sub: 'hours a week', step: 1, min: 0, max: 60 },
+    { key: 'basicsHoursPerDay', label: 'Daily basics', sub: 'cooking, eating, getting ready, travel — hours a day', step: 0.5, min: 0, max: 8 },
+  ];
+
   // The reveal example: a typical night out
   const EXAMPLE = { label: 'a £20 night out', price: 20, hours: 4 };
 
@@ -88,9 +96,11 @@
         </div>
         <div class="screen-foot">
           <button class="btn btn-primary" id="go" autofocus>Find out</button>
+          <button class="btn btn-quiet" id="demo">Try it with sample data</button>
         </div>
       </section>`);
     app.querySelector('#go').onclick = screenFunding;
+    app.querySelector('#demo').onclick = loadDemo;
   }
 
   function screenFunding() {
@@ -164,12 +174,7 @@
   }
 
   function screenWeek() {
-    const rows = [
-      { key: 'sleepHoursPerNight', label: 'Sleep', sub: 'hours a night', step: 0.5, min: 4, max: 12 },
-      { key: 'lectureHoursPerWeek', label: 'Lectures and study', sub: 'hours a week', step: 1, min: 0, max: 80 },
-      { key: 'workHoursPerWeek', label: 'Paid work', sub: 'hours a week', step: 1, min: 0, max: 60 },
-      { key: 'basicsHoursPerDay', label: 'Daily basics', sub: 'cooking, eating, getting ready, travel — hours a day', step: 0.5, min: 0, max: 8 },
-    ];
+    const rows = WEEK_ROWS;
     render(`
       <section class="screen">
         ${steps(3)}
@@ -280,6 +285,7 @@
           <span class="fine">This week</span>
         </header>
         <div class="screen-body">
+          ${state.demo ? '<p class="demo-note">You’re looking at sample data. Tap <em>Start over</em> to use your own.</p>' : ''}
           <div class="big-number">${Math.round(left)}<small>of ${free} free hours left</small></div>
           ${over > 0.5 ? `<p class="fine" style="margin:6px 0 0">You’re ${fmtHours(over)} past your free week.</p>` : ''}
           ${dotsHtml(free, { ...weekDots(free), fresh: freshFrom })}
@@ -298,6 +304,7 @@
             </span>
             <span class="n">${fmtHours(ledger.hours)}</span>
           </div>
+          ${alternativeLine(ledger)}
           ${week.length ? `
             <ul class="log-list" aria-label="This week">
               ${week.map(l => `
@@ -316,6 +323,7 @@
         <div class="screen-foot">
           <button class="btn btn-primary" id="log">Log something</button>
           <button class="btn btn-quiet" id="auto">${state.autoLogConnected ? 'Card payments: connected' : 'Log card payments automatically'}</button>
+          <button class="btn btn-quiet" id="edit">Edit my numbers</button>
           <button class="btn btn-quiet" id="reset">Start over</button>
           ${categories.settings.testDelayMinutes ? `<p class="fine" style="text-align:center;margin:0">Test mode: ratings are due ${categories.settings.testDelayMinutes} min after logging.</p>` : ''}
         </div>
@@ -323,6 +331,7 @@
       </section>`);
     app.querySelector('#log').onclick = () => screenLog();
     app.querySelector('#auto').onclick = screenAutoSetup;
+    app.querySelector('#edit').onclick = screenSettings;
     app.querySelector('#reset').onclick = () => { state = storage.reset(); screenHook(); };
   }
 
@@ -380,6 +389,7 @@
               <div class="big-number" style="font-size:56px"><span id="lh">0</span><small>life-hours</small></div>
               <p class="fine" id="lh-detail"></p>
             </div>
+            <div class="track" id="track" aria-live="polite"></div>
           </div>
         </div>
         <div class="screen-foot">
@@ -454,6 +464,7 @@
       $('#lh-detail').textContent = (log.price > 0
         ? fmtHours(b.doing) + ' doing it + ' + fmtHours(b.paying) + (p.mode === 'job' ? ' working to pay for it. ' : ' of your money. ')
         : 'All of it is time. ') + (pct >= 100 ? 'More than your whole free week.' : pct + '% of your free week.');
+      $('#track').innerHTML = trackRecordHtml(log.activity, log.category);
     }
 
     function applyCategory() {
@@ -611,54 +622,50 @@
     return location.href.split(/[?#]/)[0];   // works on a live site and when opened from the folder
   }
 
-  // One tap adds the shortcut; one short automation turns it on for card payments.
-  // Apple only lets the user create automations themselves, so that part can't be skipped.
+  // Apple only lets people create payment automations themselves, so the app walks
+  // them through it once. These are the steps that work on iOS 18 ("Wallet" trigger).
   function screenAutoSetup() {
     currentScreen = 'setup';
-    const shortcutUrl = LH.config && LH.config.SHORTCUT_URL;
     const onIphone = /iPhone|iPod/.test(navigator.userAgent);
-    const done = !!state.autoLogConnected;
+    const local = location.protocol === 'file:';
+    const link = appUrl() + '?merchant=[Merchant]&amount=[Amount]';
     render(`
       <section class="screen">
         <header class="home-head">
           <button class="btn btn-quiet" id="back" style="padding:0">Back</button>
-          ${done ? '<span class="pill">Connected</span>' : ''}
+          ${state.autoLogConnected ? '<span class="pill">Connected</span>' : ''}
         </header>
         <div class="screen-body">
           <h1 style="font-size:28px">Log card payments automatically</h1>
-          <p class="lede">Every time you pay with Apple Pay, Life-hours opens with the shop and amount filled in. You just confirm.</p>
-          ${onIphone ? '' : `<p class="essential-note" style="margin:0 0 20px">This works on iPhone. Open this page on your phone to set it up.</p>`}
+          <p class="lede">Every time you pay with Apple Pay, Life-hours opens with the shop and amount filled in. Set it up once; it takes about two minutes.</p>
+          ${local
+            ? '<p class="essential-note" style="margin:0 0 20px">Put Life-hours online first, then open it from that link. Your phone needs a web address it can reach, not a file on this computer.</p>'
+            : onIphone ? '' : '<p class="essential-note" style="margin:0 0 20px">This works on iPhone. Open this page on your phone to set it up.</p>'}
 
           <div class="setup-step">
             <span class="setup-n">1</span>
             <div>
-              <strong>Add the shortcut</strong>
-              <p class="fine" style="margin:2px 0 10px">${shortcutUrl ? 'Opens Shortcuts. Tap <em>Add Shortcut</em>.' : 'Do this once.'}</p>
-              ${shortcutUrl
-                ? `<a class="btn btn-primary btn-sm" id="add" href="${esc(shortcutUrl)}">Add to Shortcuts</a>`
-                : location.protocol === 'file:'
-                ? `<p class="essential-note" style="margin:0">Put Life-hours online first (for example on Netlify), then open it from that link. The shortcut needs a web address your phone can reach, not a file on this computer.</p>`
-                : `<details class="build-own">
-                    <summary>How to build it (2 minutes)</summary>
-                    <ol>
-                      <li>New shortcut, named <em>Life-hours</em>.</li>
-                      <li>Add <em>Text</em> and paste the link below, then replace <em>[Merchant]</em> and <em>[Amount]</em> with the <em>Shortcut Input</em> Merchant and Amount variables.</li>
-                      <li>Add <em>Open URLs</em>.</li>
-                    </ol>
-                    <code class="url-box">${esc(appUrl())}?merchant=[Merchant]&amp;amount=[Amount]</code>
-                    <button class="btn btn-ghost btn-sm" id="copy">Copy the link</button>
-                  </details>`}
+              <strong>Copy your link</strong>
+              <code class="url-box">${esc(link)}</code>
+              <button class="btn btn-ghost btn-sm" id="copy">Copy the link</button>
             </div>
           </div>
-
           <div class="setup-step">
             <span class="setup-n">2</span>
             <div>
-              <strong>Turn it on for card payments</strong>
-              <p class="fine" style="margin:2px 0 10px">In Shortcuts: <em>Automation</em> → <em>+</em> → <em>Transaction</em> → pick your cards → <em>Run Immediately</em> → choose <em>Life-hours</em>.</p>
+              <strong>Create the automation</strong>
+              <p class="fine" style="margin:2px 0 10px">In Shortcuts: <em>Automation</em> → <em>+</em> → <em>Wallet</em> → pick your card → <em>Run Immediately</em> → <em>Next</em> → <em>New Blank Automation</em>.</p>
               <a class="btn btn-ghost btn-sm" href="shortcuts://">Open Shortcuts</a>
             </div>
           </div>
+          <div class="setup-step">
+            <span class="setup-n">3</span>
+            <div>
+              <strong>Add two actions</strong>
+              <p class="fine" style="margin:2px 0 0">Add <em>Text</em> and paste the link. Replace <em>[Merchant]</em> with <em>Select Variable</em> → <em>Shortcut Input</em>, then tap it and choose <em>Merchant</em>. Do the same for <em>[Amount]</em>. Then add <em>Open URLs</em> and tap <em>Done</em>.</p>
+            </div>
+          </div>
+          <p class="fine">The link opens in your default browser, so set up Life-hours in that browser. Apple doesn’t let apps step in before a payment, so this logs it the moment after.</p>
         </div>
         <div class="screen-foot">
           <button class="btn btn-quiet" id="try">Try a pretend payment</button>
@@ -666,14 +673,167 @@
       </section>`);
     app.querySelector('#back').onclick = () => screenHome();
     const copy = app.querySelector('#copy');
-    if (copy) copy.onclick = async () => {
-      try { await navigator.clipboard.writeText(appUrl() + '?merchant=[Merchant]&amount=[Amount]'); copy.textContent = 'Copied'; }
+    copy.onclick = async () => {
+      try { await navigator.clipboard.writeText(link); copy.textContent = 'Copied'; }
       catch (err) { copy.textContent = 'Press and hold the link to copy it'; }
     };
-    // Goes through the real link, exactly as the shortcut would
+    // Goes through the real link, exactly as the automation would
     app.querySelector('#try').onclick = () => {
       location.href = appUrl() + '?merchant=' + encodeURIComponent('PRET A MANGER 0142') + '&amount=' + encodeURIComponent('£8.50') + '&demo=1';
     };
+  }
+
+  // ---------- Your track record ----------
+  // Shown on the log screen: what you said last time, not what you should do.
+  function trackRecordHtml(activity, category) {
+    if (!activity || !activity.trim() || !category) return '';
+    const f = calc.forecast(activity, category, state.logs, LH.seed.SEED_PRIORS);
+    if (f.value == null) return '';
+    const chip = r => `<span class="rchip ${r <= calc.REGRET_THRESHOLD ? 'regret' : 'worth'}">${r}</span>`;
+    const label = categories.BY_ID[category].label.toLowerCase();
+    if (f.source === 'activity') {
+      const shown = f.lastRatings.length;
+      return `<p class="track-title">${shown > 1 ? 'The last ' + shown + ' times' : 'Last time'} you logged this, you rated it</p>
+        <div class="track-row">${f.lastRatings.map(chip).join('')}<span class="fine">${f.n > 3 ? 'of ' + f.n + ' times' : ''}</span></div>`;
+    }
+    if (f.source === 'category') {
+      return `<p class="track-title">First time logging this. Your ${esc(label)} ratings average ${f.value.toFixed(1)}/10.</p>`;
+    }
+    return `<p class="track-title">No ratings of yours yet. In the ${LH.seed.PRIOR_SOURCE}, people rate this kind of thing about ${f.value.toFixed(1)}/10 in the moment.</p>`;
+  }
+
+  // The regret ledger in opportunity-cost terms: your next best use of that time
+  function alternativeLine(ledger) {
+    if (ledger.hours < 1) return '';
+    const best = calc.bestAlternative(state.logs);
+    if (!best || best.avgRating <= calc.REGRET_THRESHOLD) return '';
+    const times = Math.floor(ledger.hours / best.avgLifeHours);
+    const what = `enough for ${esc(best.activity)} ${times >= 2 ? times + ' more times' : 'once more'}`;
+    return `<p class="alternative">That’s ${what}, your best-rated thing (${best.avgRating.toFixed(1)}/10).</p>`;
+  }
+
+  // ---------- Edit my numbers ----------
+  function screenSettings() {
+    currentScreen = 'settings';
+    const edit = { ...state.profile };
+    if (edit.basicsHoursPerDay == null) edit.basicsHoursPerDay = Math.round((edit.otherHoursPerWeek || 14) / 7 * 2) / 2;
+    render(`
+      <section class="screen">
+        <header class="home-head">
+          <button class="btn btn-quiet" id="back" style="padding:0">Cancel</button>
+        </header>
+        <div class="screen-body">
+          <h1 style="font-size:28px">Your numbers</h1>
+          <div class="choices choices-row">
+            <button class="choice" data-mode="job" aria-pressed="${edit.mode === 'job'}"><strong>Job</strong></button>
+            <button class="choice" data-mode="loan" aria-pressed="${edit.mode === 'loan'}"><strong>Student loan</strong></button>
+          </div>
+          <div class="field-row">
+            <label for="amt" id="amt-label"></label>
+            <label class="money money-sm">
+              <span class="sym">£</span>
+              <input id="amt" type="text" inputmode="decimal" autocomplete="off">
+            </label>
+          </div>
+          <div class="stepper-list">
+            ${WEEK_ROWS.map(r => `
+              <div class="stepper">
+                <label id="l-${r.key}">${r.label}<small>${r.sub}</small></label>
+                <div class="stepper-ctrl" role="group" aria-labelledby="l-${r.key}">
+                  <button data-key="${r.key}" data-d="-1" aria-label="Less">−</button>
+                  <output id="o-${r.key}">${edit[r.key]}</output>
+                  <button data-key="${r.key}" data-d="1" aria-label="More">+</button>
+                </div>
+              </div>`).join('')}
+          </div>
+          <div class="live-total">
+            <span class="muted">Free hours a week</span>
+            <span class="n" id="free"></span>
+          </div>
+          <p class="error" id="err" role="alert"></p>
+          <p class="fine">Things you’ve already logged keep the cost they had at the time.</p>
+        </div>
+        <div class="screen-foot">
+          <button class="btn btn-primary" id="save">Save</button>
+        </div>
+      </section>`);
+    const $ = q => app.querySelector(q);
+    const amt = $('#amt');
+    const parse = () => parseFloat(amt.value.replace(/[£,\s]/g, ''));
+    function showMode() {
+      app.querySelectorAll('.choice').forEach(c => c.setAttribute('aria-pressed', c.dataset.mode === edit.mode));
+      $('#amt-label').textContent = edit.mode === 'job' ? 'Take-home pay per hour' : 'To live on each week';
+      const v = edit.mode === 'job' ? edit.takeHomeHourly : edit.weeklyBudget;
+      amt.value = v != null ? v : '';
+      check();
+    }
+    function check() {
+      edit.otherHoursPerWeek = edit.basicsHoursPerDay * 7;
+      const free = calc.freeHoursPerWeek(edit);
+      $('#free').textContent = Math.round(free);
+      const v = parse();
+      let msg = '';
+      if (!(v > 0)) msg = edit.mode === 'job' ? 'Enter your hourly take-home pay.' : 'Enter what you have to live on each week.';
+      else if (edit.mode === 'job' && v > 200) msg = 'That’s per hour, not per month. Enter your hourly rate.';
+      else if (free < 1) msg = 'That leaves no free time. Lower one of the numbers.';
+      $('#err').textContent = msg;
+      $('#save').disabled = !!msg;
+    }
+    app.querySelectorAll('.choice').forEach(b => { b.onclick = () => { edit.mode = b.dataset.mode; showMode(); }; });
+    amt.oninput = () => {
+      const v = parse();
+      if (edit.mode === 'job') edit.takeHomeHourly = v > 0 ? v : null; else edit.weeklyBudget = v > 0 ? v : null;
+      check();
+    };
+    app.querySelectorAll('.stepper-ctrl button').forEach(b => {
+      b.onclick = () => {
+        const r = WEEK_ROWS.find(x => x.key === b.dataset.key);
+        edit[r.key] = Math.min(r.max, Math.max(r.min, edit[r.key] + r.step * Number(b.dataset.d)));
+        $('#o-' + r.key).textContent = edit[r.key];
+        check();
+      };
+    });
+    $('#back').onclick = () => screenHome();
+    $('#save').onclick = () => {
+      state.profile = edit;
+      storage.save(state);
+      screenHome({ toast: 'Saved. New logs use these numbers.' });
+    };
+    showMode();
+  }
+
+  // ---------- Sample data ----------
+  // A believable few weeks for a student on a loan, so anyone can see the app lived-in
+  function loadDemo() {
+    const { DEMO_PROFILE, DEMO_LOGS } = LH.seed;
+    const now = new Date();
+    const profile = { ...DEMO_PROFILE, createdAt: now.toISOString() };
+    const rate = calc.hourlyRate(profile);
+    const weekStart = calc.weekStart(now).getTime();
+    const span = Math.max(now.getTime() - weekStart, 60 * 1000);
+    const logs = DEMO_LOGS.map((d, i) => {
+      let t;
+      if (d.day > 0) {
+        t = new Date(weekStart - d.day * 864e5);
+        t.setHours(d.hour, 0, 0, 0);
+      } else {
+        t = new Date(weekStart + Math.min(span, Math.max(0, span * d.slot)));
+        if (d.slot >= 1) t = new Date(now.getTime() - 5000);
+      }
+      const due = categories.ratingDueAt(d.category, t);
+      return {
+        id: 'demo' + i,
+        activity: d.activity, category: d.category, autoCategory: d.category,
+        price: d.price, durationHours: d.hours,
+        lifeHours: calc.lifeHours(d.price, d.hours, rate),
+        loggedAt: t.toISOString(), ratingDueAt: due.toISOString(),
+        rating: d.rating, ratedAt: d.rating != null ? due.toISOString() : undefined,
+        source: 'manual',
+      };
+    });
+    state = { profile, logs, overrides: {}, demo: true };
+    storage.save(state);
+    screenHome();
   }
 
   // Read a payment link once, then clear it so a refresh doesn't log it twice
