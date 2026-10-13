@@ -32,18 +32,32 @@
     return Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : null;
   }
 
+  function safeDecode(s) {
+    if (s == null) return null;
+    s = s.replace(/\+/g, ' ');
+    try { return decodeURIComponent(s); } catch (e) { return s; }
+  }
+
+  // Reads one field from the raw query string. Tolerates what a Shortcut can send unencoded:
+  // spaces, "£", and an "&" inside a shop name ("M&S"), in either order.
+  function rawField(query, name) {
+    const others = ['merchant', 'amount', 'demo'].filter(n => n !== name).join('|');
+    const m = new RegExp('(?:^|&)' + name + '=(.*?)(?=&(?:' + others + ')=|$)', 'i').exec(query);
+    return m ? safeDecode(m[1]) : null;
+  }
+
   // Reads ?merchant=…&amount=… from a URL. Returns null if it isn't a payment link.
   function fromUrl(href) {
-    const params = new URL(href).searchParams;
-    if (!params.has('merchant') && !params.has('amount')) return null;
-    const amount = parseAmount(params.get('amount'));
-    const activity = cleanMerchant(params.get('merchant'));
+    const q = String(href).split('#')[0].split('?').slice(1).join('?');
+    if (!/(^|&)(merchant|amount)=/i.test(q)) return null;
+    const amount = parseAmount(rawField(q, 'amount'));
+    const activity = cleanMerchant(rawField(q, 'merchant'));
     if (!activity && amount == null) return null;
     return {
       activity: activity || 'Card payment',
       price: amount || 0,
       source: 'applepay',
-      demo: params.get('demo') === '1',   // from "Try a pretend payment", not a real card
+      demo: rawField(q, 'demo') === '1',   // from "Try a pretend payment", not a real card
       // Same shop + amount in the same minute = the Shortcut fired twice
       key: activity.toLowerCase() + '|' + amount + '|' + new Date().toISOString().slice(0, 16),
     };

@@ -117,6 +117,19 @@ test('payment link is read from the URL', () => {
   assert.equal(p.activity, 'Pret a Manger'); assert.equal(p.price, 8.5); assert.equal(p.source, 'applepay');
 });
 test('a normal link is not a payment', () => assert.equal(payments.fromUrl('https://x.app/'), null));
+test('unencoded spaces and £ from a Shortcut still work', () => {
+  const p = payments.fromUrl('https://x.app/?merchant=COSTA COFFEE 1234&amount=£3.10');
+  assert.equal(p.activity, 'Costa Coffee'); assert.equal(p.price, 3.1);
+});
+test('an & inside the shop name still works', () => {
+  const p = payments.fromUrl('https://x.app/?merchant=M&S SIMPLY FOOD&amount=4.50');
+  assert.equal(p.activity, 'M&S Simply Food'); assert.equal(p.price, 4.5);
+});
+test('amount first, encoded merchant', () => {
+  const p = payments.fromUrl('https://x.app/?amount=12.00&merchant=NANDOS%20CAMDEN');
+  assert.equal(p.activity, 'Nandos Camden'); assert.equal(p.price, 12);
+});
+test('empty values from a manual Run are ignored', () => assert.equal(payments.fromUrl('https://x.app/?merchant=&amount='), null));
 test('cleaned merchant still categorises', () => {
   assert.equal(categories.categorise(payments.cleanMerchant('PRET A MANGER')).category, 'food');
   assert.equal(categories.categorise(payments.cleanMerchant('SQ *WETHERSPOONS 0231')).category, 'social');

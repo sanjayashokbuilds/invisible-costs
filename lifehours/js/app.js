@@ -6,8 +6,8 @@
   let currentScreen = null;
   let pendingPayment = null;
 
-  // TESTING: ratings come due 2 minutes after logging. Set to null for real delays.
-  categories.settings.testDelayMinutes = 2;
+  const motion = LH.motion;
+  let lastLeft = null, lastLedger = null;   // so home can count numbers from where they were
 
   // Onboarding answers, kept until the profile is saved
   const draft = {
@@ -40,6 +40,14 @@
     if (h < 1) return Math.round(h * 60) + ' min';
     const r = Math.round(h * 10) / 10;
     return (Number.isInteger(r) ? r : r.toFixed(1)) + 'h';
+  }
+
+  // Set a number and roll it up or down if it changed
+  function setNum(el, value, direction) {
+    if (!el) return;
+    const old = el.textContent;
+    el.textContent = value;
+    if (old !== '' && old !== String(value)) motion.bump(el, direction != null ? direction : (parseFloat(value) < parseFloat(old) ? -1 : 1));
   }
 
   function render(html) {
@@ -89,18 +97,27 @@
   function screenHook() {
     render(`
       <section class="screen">
-        <div class="screen-body" style="display:flex;flex-direction:column;justify-content:center">
+        <div class="screen-body stagger" style="display:flex;flex-direction:column;justify-content:center">
           <p class="wordmark">Life-hours</p>
+          <div class="tick-row" aria-hidden="true">${'<span class="dot"></span>'.repeat(16)}</div>
           <h1>What did your last night out really cost you?</h1>
           <p class="lede">Not just the money. The hours you worked to pay for it, and the hours you spent doing it.</p>
         </div>
-        <div class="screen-foot">
+        <div class="screen-foot stagger stagger-late">
           <button class="btn btn-primary" id="go" autofocus>Find out</button>
           <button class="btn btn-quiet" id="demo">Try it with sample data</button>
         </div>
       </section>`);
     app.querySelector('#go').onclick = screenFunding;
     app.querySelector('#demo').onclick = loadDemo;
+    // An hour slipping away every beat, while you read
+    const dots = [...app.querySelectorAll('.tick-row .dot')];
+    let i = 0;
+    const timer = setInterval(() => {
+      if (!document.body.contains(dots[0])) return clearInterval(timer);
+      if (i === dots.length) { dots.forEach(d => d.classList.remove('gone')); i = 0; return; }
+      dots[i++].classList.add('gone');
+    }, motion.reduced() ? 100000 : 650);
   }
 
   function screenFunding() {
@@ -125,6 +142,7 @@
     app.querySelectorAll('.choice').forEach(b => {
       b.onclick = () => {
         draft.mode = b.dataset.mode;
+        motion.play(b, 'pop');
         if (draft.mode === 'job' && !draft.workHoursPerWeek) draft.workHoursPerWeek = 10;
         if (draft.mode === 'loan') draft.workHoursPerWeek = 0;
         app.querySelectorAll('.choice').forEach(c => c.setAttribute('aria-pressed', c === b));
@@ -205,7 +223,7 @@
       </section>`);
     const update = () => {
       const free = calc.freeHoursPerWeek(draft);
-      app.querySelector('#free').textContent = Math.round(free);
+      setNum(app.querySelector('#free'), Math.round(free));
       app.querySelector('#next').disabled = free < 1;
       app.querySelector('#err').textContent = free < 1 ? 'That leaves no free time. Lower one of the numbers.' : '';
     };
@@ -215,7 +233,7 @@
         const v = Math.min(r.max, Math.max(r.min, draft[r.key] + r.step * Number(b.dataset.d)));
         draft[r.key] = v;
         draft.otherHoursPerWeek = draft.basicsHoursPerDay * 7;
-        app.querySelector('#o-' + r.key).textContent = v;
+        setNum(app.querySelector('#o-' + r.key), v, Number(b.dataset.d));
         update();
       };
     });
@@ -286,7 +304,7 @@
         </header>
         <div class="screen-body">
           ${state.demo ? '<p class="demo-note">You’re looking at sample data. Tap <em>Start over</em> to use your own.</p>' : ''}
-          <div class="big-number">${Math.round(left)}<small>of ${free} free hours left</small></div>
+          <div class="big-number"><span id="left">${Math.round(left)}</span><small>of ${free} free hours left</small></div>
           ${over > 0.5 ? `<p class="fine" style="margin:6px 0 0">You’re ${fmtHours(over)} past your free week.</p>` : ''}
           ${dotsHtml(free, { ...weekDots(free), fresh: freshFrom })}
           <div class="legend">
@@ -302,7 +320,7 @@
                 ? 'Since you started. This never resets.'
                 : 'Nothing yet. Rate what you log and this fills in.'}</span>
             </span>
-            <span class="n">${fmtHours(ledger.hours)}</span>
+            <span class="n" id="ledger">${fmtHours(ledger.hours)}</span>
           </div>
           ${alternativeLine(ledger)}
           ${week.length ? `
@@ -325,10 +343,13 @@
           <button class="btn btn-quiet" id="auto">${state.autoLogConnected ? 'Card payments: connected' : 'Log card payments automatically'}</button>
           <button class="btn btn-quiet" id="edit">Edit my numbers</button>
           <button class="btn btn-quiet" id="reset">Start over</button>
-          ${categories.settings.testDelayMinutes ? `<p class="fine" style="text-align:center;margin:0">Test mode: ratings are due ${categories.settings.testDelayMinutes} min after logging.</p>` : ''}
         </div>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
       </section>`);
+    if (lastLeft != null) motion.countTo(app.querySelector('#left'), lastLeft, left, v => Math.round(v), 900);
+    if (lastLedger != null && lastLedger !== ledger.hours) motion.countTo(app.querySelector('#ledger'), lastLedger, ledger.hours, fmtHours, 900);
+    lastLeft = left;
+    lastLedger = ledger.hours;
     app.querySelector('#log').onclick = () => screenLog();
     app.querySelector('#auto').onclick = screenAutoSetup;
     app.querySelector('#edit').onclick = screenSettings;
@@ -409,6 +430,7 @@
       return categories.categorise(text);
     }
 
+    let poppedCategory = null;
     function drawCategories() {
       if (!log.activity.trim()) { catArea.innerHTML = ''; return; }
       if (log.essential && !log.countAnyway) {
@@ -426,6 +448,10 @@
           ${categories.CATEGORIES.map(c => `
             <button class="chip" role="radio" aria-checked="${c.id === log.category}" data-cat="${c.id}">${c.label}</button>`).join('')}
         </div>`;
+      if (log.category !== poppedCategory) {
+        motion.play(catArea.querySelector('.chip[aria-checked="true"]'), 'pop');
+        poppedCategory = log.category;
+      }
       catArea.querySelectorAll('.chip').forEach(b => {
         b.onclick = () => {
           log.category = b.dataset.cat;
@@ -457,7 +483,8 @@
       details.hidden = !tracked;
       $('#save').disabled = !tracked;
       if (!tracked) return;
-      $('#dur').textContent = fmtHours(log.durationHours);
+      setNum($('#dur'), fmtHours(log.durationHours), lastDurDir);
+      lastDurDir = null;
       const b = calc.lifeHoursBreakdown(log.price, log.durationHours, rate);
       animateNumber(b.total);
       const pct = Math.round(100 * b.total / free);
@@ -491,7 +518,9 @@
       log.price = v > 0 ? v : 0;
       refresh();
     };
+    let lastDurDir = null;
     const stepDuration = d => {
+      lastDurDir = d;
       const i = DURATION_STEPS.findIndex(s => s >= log.durationHours);
       const next = DURATION_STEPS[Math.min(DURATION_STEPS.length - 1, Math.max(0, (i < 0 ? DURATION_STEPS.length - 1 : i) + d))];
       log.durationHours = next;
@@ -536,7 +565,12 @@
         state.overrides[entry.activity.toLowerCase()] = entry.category;
       }
       storage.save(state);
-      screenHome({ freshFrom: before, toast: 'Logged. We’ll ask how it was ' + whenText(entry.ratingDueAt) + '.' });
+      const btn = $('#save');
+      btn.disabled = true;
+      btn.classList.add('done');
+      btn.textContent = 'Logged';
+      setTimeout(() => screenHome({ freshFrom: before, toast: 'Logged. We’ll ask how it was ' + whenText(entry.ratingDueAt) + '.' }),
+        motion.reduced() ? 0 : 420);
     };
   }
 
@@ -579,7 +613,17 @@
         log.rating = n;
         log.ratedAt = new Date().toISOString();
         storage.save(state);
-        setTimeout(() => showRatingResult(log), 350);
+        const r = b.getBoundingClientRect();
+        if (calc.isRegret(log)) {
+          motion.flash('regret');
+          motion.shake(app.querySelector('.screen'));
+          motion.buzz([30, 40, 30]);
+        } else {
+          motion.flash('worth');
+          motion.burst(r.left + r.width / 2, r.top + r.height / 2, 'worth');
+          motion.buzz(15);
+        }
+        setTimeout(() => showRatingResult(log), motion.reduced() ? 0 : 650);
       };
     });
     app.querySelector('#delete').onclick = () => {
@@ -598,7 +642,7 @@
     app.querySelector('#rate-body').innerHTML = `
       <h1>${regret ? 'Marked as regretted.' : 'Marked as worth it.'}</h1>
       <p class="lede">${regret
-        ? 'These ' + fmtHours(log.lifeHours) + ' go on your regret ledger. That’s ' + fmtHours(ledger.hours) + ' in total now.'
+        ? 'These ' + fmtHours(log.lifeHours) + ' go on your regret ledger. That’s <span id="ledger-total" class="regret-text">' + fmtHours(ledger.hours - log.lifeHours) + '</span> in total now.'
         : 'These ' + fmtHours(log.lifeHours) + ' were well spent. They’ll stay green on your week.'}</p>
       <div class="dots recolour">${Array.from({ length: n }, (_, i) => `<span class="dot pending" style="--i:${i}"></span>`).join('')}</div>`;
     app.querySelector('#rate-foot').innerHTML =
@@ -607,6 +651,8 @@
     requestAnimationFrame(() => requestAnimationFrame(() => {
       app.querySelectorAll('.recolour .dot').forEach(d => { d.classList.remove('pending'); d.classList.add(regret ? 'regret' : 'worth'); });
     }));
+    if (regret) setTimeout(() => motion.countTo(app.querySelector('#ledger-total'), ledger.hours - log.lifeHours, ledger.hours, fmtHours, 900), 300);
+    app.querySelector('#rate-body').classList.add('result-in');
     const next = app.querySelector('#next');
     next.focus({ preventScroll: true });
     next.onclick = () => screenRating();
@@ -661,8 +707,8 @@
           <div class="setup-step">
             <span class="setup-n">3</span>
             <div>
-              <strong>Add two actions</strong>
-              <p class="fine" style="margin:2px 0 0">Add <em>Text</em> and paste the link. Replace <em>[Merchant]</em> with <em>Select Variable</em> → <em>Shortcut Input</em>, then tap it and choose <em>Merchant</em>. Do the same for <em>[Amount]</em>. Then add <em>Open URLs</em> and tap <em>Done</em>.</p>
+              <strong>Add three actions</strong>
+              <p class="fine" style="margin:2px 0 0">Add <em>URL Encode</em> and set it to <em>Shortcut Input</em> → <em>Merchant</em>. Add <em>Text</em> and paste the link. Replace <em>[Merchant]</em> with <em>Select Variable</em> → <em>URL Encoded Text</em>, and <em>[Amount]</em> with <em>Shortcut Input</em> → <em>Amount</em>. Then add <em>Open URLs</em> and tap <em>Done</em>.</p>
             </div>
           </div>
           <p class="fine">The link opens in your default browser, so set up Life-hours in that browser. Apple doesn’t let apps step in before a payment, so this logs it the moment after.</p>
@@ -770,7 +816,7 @@
     function check() {
       edit.otherHoursPerWeek = edit.basicsHoursPerDay * 7;
       const free = calc.freeHoursPerWeek(edit);
-      $('#free').textContent = Math.round(free);
+      setNum($('#free'), Math.round(free));
       const v = parse();
       let msg = '';
       if (!(v > 0)) msg = edit.mode === 'job' ? 'Enter your hourly take-home pay.' : 'Enter what you have to live on each week.';
@@ -779,7 +825,7 @@
       $('#err').textContent = msg;
       $('#save').disabled = !!msg;
     }
-    app.querySelectorAll('.choice').forEach(b => { b.onclick = () => { edit.mode = b.dataset.mode; showMode(); }; });
+    app.querySelectorAll('.choice').forEach(b => { b.onclick = () => { edit.mode = b.dataset.mode; showMode(); motion.play(b, 'pop'); }; });
     amt.oninput = () => {
       const v = parse();
       if (edit.mode === 'job') edit.takeHomeHourly = v > 0 ? v : null; else edit.weeklyBudget = v > 0 ? v : null;
@@ -789,7 +835,7 @@
       b.onclick = () => {
         const r = WEEK_ROWS.find(x => x.key === b.dataset.key);
         edit[r.key] = Math.min(r.max, Math.max(r.min, edit[r.key] + r.step * Number(b.dataset.d)));
-        $('#o-' + r.key).textContent = edit[r.key];
+        setNum($('#o-' + r.key), edit[r.key], Number(b.dataset.d));
         check();
       };
     });
