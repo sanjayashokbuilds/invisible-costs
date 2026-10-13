@@ -2,8 +2,9 @@
 require('../js/calc.js');
 require('../js/keywords.js');
 require('../js/categorise.js');
+require('../js/payments.js');
 const assert = require('node:assert/strict');
-const { calc, categories } = globalThis.LH;
+const { calc, categories, payments } = globalThis.LH;
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -103,6 +104,22 @@ test('social rating due 11:00 next morning', () => {
 test('screen rating due 30 min later', () => {
   const d = categories.ratingDueAt('screen', new Date('2026-10-12T20:00:00'));
   assert.equal(d.getHours(), 20); assert.equal(d.getMinutes(), 30);
+});
+
+console.log('Card payments from Apple Pay');
+[['PRET A MANGER', 'Pret a Manger'], ['SQ *BLUE BOTTLE CAFE', 'Blue Bottle Cafe'], ['MCDONALDS 1234 LONDON', 'Mcdonalds'],
+ ['SUMUP *FALAFEL KING', 'Falafel King'], ['Deliveroo', 'Deliveroo'], ['TFL TRAVEL CH', 'Tfl Travel Ch']]
+  .forEach(([raw, want]) => test(`merchant "${raw}" → "${want}"`, () => assert.equal(payments.cleanMerchant(raw), want)));
+[['£8.50', 8.5], ['8.50 GBP', 8.5], ['8,50', 8.5], ['1,250.00', 1250], ['-3.20', 3.2], ['', null], ['abc', null]]
+  .forEach(([raw, want]) => test(`amount "${raw}" → ${want}`, () => assert.equal(payments.parseAmount(raw), want)));
+test('payment link is read from the URL', () => {
+  const p = payments.fromUrl('https://x.app/?merchant=PRET%20A%20MANGER%2012&amount=%C2%A38.50');
+  assert.equal(p.activity, 'Pret a Manger'); assert.equal(p.price, 8.5); assert.equal(p.source, 'applepay');
+});
+test('a normal link is not a payment', () => assert.equal(payments.fromUrl('https://x.app/'), null));
+test('cleaned merchant still categorises', () => {
+  assert.equal(categories.categorise(payments.cleanMerchant('PRET A MANGER')).category, 'food');
+  assert.equal(categories.categorise(payments.cleanMerchant('SQ *WETHERSPOONS 0231')).category, 'social');
 });
 
 console.log('\nCategoriser accuracy on realistic student phrases');

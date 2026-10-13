@@ -291,3 +291,25 @@ button { font: inherit; color: inherit; }
 .rate-btn:disabled { cursor: default; }
 .rating-ends { display: flex; justify-content: space-between; margin-top: 12px; }
 .dots.recolour .dot { transition: background .45s var(--ease), box-shadow .45s; transition-delay: calc(var(--i) * 45ms); }
+
+/* ---------- Apple Pay auto-logging ---------- */
+.pill { font-size: 13px; color: var(--worth); background: #e6f2ea; border-radius: 999px; padding: 5px 11px; }
+.setup-steps { padding-left: 22px; margin: 0 0 18px; }
+.setup-steps li { margin-bottom: 14px; padding-left: 4px; }
+.setup-steps strong { font-weight: 600; }
+.url-box {
+  display: block; margin: 10px 0;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; font-size: 13.5px; line-height: 1.45; word-break: break-all;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.setup-step { display: flex; gap: 14px; padding: 18px 0; border-top: 1px solid var(--line); }
+.setup-step strong { font-weight: 500; }
+.setup-n {
+  flex: none; width: 28px; height: 28px; border-radius: 50%;
+  display: grid; place-items: center;
+  border: 1px solid var(--line); font-size: 14px; color: var(--ink-soft);
+}
+.btn-sm { display: inline-block; padding: 11px 18px; font-size: 15px; text-decoration: none; }
+.btn-ghost { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+a.btn-primary { color: var(--paper); }

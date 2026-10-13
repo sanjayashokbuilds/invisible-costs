@@ -93,7 +93,7 @@ SURVEY_CATEGORIES = [
         "monster", "red bull", "snack", "snacks", "crisps", "chocolate", "sweets", "dessert", "cake",
         "ice cream", "milkshake", "krispy kreme", "doughnut", "donut", "cookie", "brunch", "breakfast",
         "lunch", "dinner", "restaurant", "eating out", "eat out", "cheat meal", "food", "late night food",
-        "vending machine", "canteen"]},
+        "vending machine", "canteen", "cafe", "café", "coffee shop", "bakery", "deli", "patisserie", "juice bar"]},
     {"survey": "Alcohol (top spending error, 32%)", "src": ["NWSLI25"], "monthly": None,
      "app": "food", "keywords": ["wine", "beer", "cans", "vodka", "gin", "rum", "buzzballz", "alcohol", "booze"]},
 

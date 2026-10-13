@@ -4,6 +4,7 @@
   const app = document.getElementById('app');
   let state = storage.load();
   let currentScreen = null;
+  let pendingPayment = null;
 
   // TESTING: ratings come due 2 minutes after logging. Set to null for real delays.
   categories.settings.testDelayMinutes = 2;
@@ -250,6 +251,7 @@
     app.querySelector('#start').onclick = () => {
       state.profile = { ...draft, createdAt: new Date().toISOString() };
       storage.save(state);
+      if (pendingPayment) { const p = pendingPayment; pendingPayment = null; return screenLog(p); }
       screenHome();
     };
     app.querySelector('#back').onclick = screenWeek;
@@ -311,12 +313,14 @@
         </div>
         <div class="screen-foot">
           <button class="btn btn-primary" id="log">Log something</button>
+          <button class="btn btn-quiet" id="auto">${state.autoLogConnected ? 'Card payments: connected' : 'Log card payments automatically'}</button>
           <button class="btn btn-quiet" id="reset">Start over</button>
           ${categories.settings.testDelayMinutes ? `<p class="fine" style="text-align:center;margin:0">Test mode: ratings are due ${categories.settings.testDelayMinutes} min after logging.</p>` : ''}
         </div>
         ${toast ? `<div class="toast" role="status">${esc(toast)}</div>` : ''}
       </section>`);
     app.querySelector('#log').onclick = () => screenLog();
+    app.querySelector('#auto').onclick = screenAutoSetup;
     app.querySelector('#reset').onclick = () => { state = storage.reset(); screenHook(); };
   }
 
@@ -331,8 +335,10 @@
   }
 
   // ---------- Log something ----------
-  function screenLog() {
-    if (calc.ratingsDue(state.logs, new Date()).length) return screenRating();
+  // prefill: { activity, price, source: 'applepay', key } when opened from a card payment
+  function screenLog(prefill = null) {
+    // A just-made payment is logged first; due ratings wait until after, so the auto-log isn't blocked
+    if (!prefill && calc.ratingsDue(state.logs, new Date()).length) return screenRating();
     currentScreen = 'log';
     const p = state.profile;
     const rate = calc.hourlyRate(p);
@@ -343,12 +349,13 @@
     render(`
       <section class="screen">
         <header class="home-head">
-          <button class="btn btn-quiet" id="back" style="padding:0">Cancel</button>
+          <button class="btn btn-quiet" id="back" style="padding:0">${prefill ? 'Don’t log it' : 'Cancel'}</button>
+          ${prefill ? '<span class="pill">Just paid with Apple Pay</span>' : ''}
         </header>
         <div class="screen-body">
-          <h1 style="font-size:28px">What did you do?</h1>
+          <h1 style="font-size:28px">${prefill ? 'Here’s what that really cost.' : 'What did you do?'}</h1>
           <input id="what" class="text-field" type="text" autocomplete="off" maxlength="60"
-            placeholder="Spoons with flatmates" aria-label="What did you do?" autofocus>
+            placeholder="Spoons with flatmates" aria-label="What did you do?" ${prefill ? '' : 'autofocus'}>
           <div id="cat-area" class="cat-area"></div>
 
           <div id="details" class="details" hidden>
@@ -447,20 +454,22 @@
         : 'All of it is time. ') + (pct >= 100 ? 'More than your whole free week.' : pct + '% of your free week.');
     }
 
+    function applyCategory() {
+      const r = autoCategorise(log.activity);
+      log.essential = r.essential;
+      log.matched = r.matched;
+      log.countAnyway = false;
+      log.autoCategory = r.category;
+      log.category = r.category;
+      if (!log.durationTouched && r.category) log.durationHours = categories.BY_ID[r.category].defaultHours;
+      refresh();
+    }
+
     let typing;
     what.oninput = () => {
       log.activity = what.value;
       clearTimeout(typing);
-      typing = setTimeout(() => {   // wait until they pause typing, so the chip doesn't flicker
-        const r = autoCategorise(log.activity);
-        log.essential = r.essential;
-        log.matched = r.matched;
-        log.countAnyway = false;
-        log.autoCategory = r.category;
-        log.category = r.category;
-        if (!log.durationTouched && r.category) log.durationHours = categories.BY_ID[r.category].defaultHours;
-        refresh();
-      }, 250);
+      typing = setTimeout(applyCategory, 250);   // wait until they pause typing, so the chip doesn't flicker
     };
     what.onkeydown = e => { if (e.key === 'Enter') $('#price').focus(); };
 
@@ -480,6 +489,13 @@
     $('#dur-plus').onclick = () => stepDuration(1);
     $('#back').onclick = () => screenHome();
 
+    if (prefill) {
+      what.value = log.activity = prefill.activity;
+      log.price = prefill.price;
+      $('#price').value = prefill.price ? prefill.price.toFixed(2) : '';
+      applyCategory();
+    }
+
     $('#save').onclick = () => {
       const now = new Date();
       const before = weekDots(free).total;
@@ -494,8 +510,13 @@
         loggedAt: now.toISOString(),
         ratingDueAt: categories.ratingDueAt(log.category, now).toISOString(),
         rating: null,
+        source: prefill ? prefill.source : 'manual',
       };
       state.logs.push(entry);
+      if (prefill && !prefill.demo) state.autoLogConnected = true;
+      if (prefill && prefill.key) {
+        state.handledPayments = (state.handledPayments || []).concat(prefill.key).slice(-50);
+      }
       // Learn from corrections: next time this exact activity goes straight to their category
       if (entry.autoCategory !== entry.category) {
         state.overrides = state.overrides || {};
@@ -583,6 +604,76 @@
     if (currentScreen === 'home' && calc.ratingsDue(state.logs, new Date()).length) screenRating();
   }, 10000);
 
+  // ---------- Automatic logging from Apple Pay ----------
+  function appUrl() {
+    return location.href.split(/[?#]/)[0];   // works on a live site and when opened from the folder
+  }
+
+  // One tap adds the shortcut; one short automation turns it on for card payments.
+  // Apple only lets the user create automations themselves, so that part can't be skipped.
+  function screenAutoSetup() {
+    currentScreen = 'setup';
+    const shortcutUrl = LH.config && LH.config.SHORTCUT_URL;
+    const onIphone = /iPhone|iPod/.test(navigator.userAgent);
+    const done = !!state.autoLogConnected;
+    render(`
+      <section class="screen">
+        <header class="home-head">
+          <button class="btn btn-quiet" id="back" style="padding:0">Back</button>
+          ${done ? '<span class="pill">Connected</span>' : ''}
+        </header>
+        <div class="screen-body">
+          <h1 style="font-size:28px">Log card payments automatically</h1>
+          <p class="lede">Every time you pay with Apple Pay, Life-hours opens with the shop and amount filled in. You just confirm.</p>
+          ${onIphone ? '' : `<p class="essential-note" style="margin:0 0 20px">This works on iPhone. Open this page on your phone to set it up.</p>`}
+
+          <div class="setup-step">
+            <span class="setup-n">1</span>
+            <div>
+              <strong>Add the shortcut</strong>
+              <p class="fine" style="margin:2px 0 10px">Opens Shortcuts. Tap <em>Add Shortcut</em>.</p>
+              ${shortcutUrl
+                ? `<a class="btn btn-primary btn-sm" id="add" href="${esc(shortcutUrl)}">Add to Shortcuts</a>`
+                : `<p class="fine" style="margin:0">The shortcut link hasn’t been set yet (see <code>js/config.js</code>).</p>`}
+            </div>
+          </div>
+
+          <div class="setup-step">
+            <span class="setup-n">2</span>
+            <div>
+              <strong>Turn it on for card payments</strong>
+              <p class="fine" style="margin:2px 0 10px">In Shortcuts: <em>Automation</em> → <em>+</em> → <em>Transaction</em> → pick your cards → <em>Run Immediately</em> → choose <em>Life-hours</em>.</p>
+              <a class="btn btn-ghost btn-sm" href="shortcuts://">Open Shortcuts</a>
+            </div>
+          </div>
+        </div>
+        <div class="screen-foot">
+          <button class="btn btn-quiet" id="try">Try a pretend payment</button>
+        </div>
+      </section>`);
+    app.querySelector('#back').onclick = () => screenHome();
+    // Goes through the real link, exactly as the shortcut would
+    app.querySelector('#try').onclick = () => {
+      location.href = appUrl() + '?merchant=' + encodeURIComponent('PRET A MANGER 0142') + '&amount=' + encodeURIComponent('£8.50') + '&demo=1';
+    };
+  }
+
+  // Read a payment link once, then clear it so a refresh doesn't log it twice
+  function takePaymentFromUrl() {
+    const payment = LH.payments.fromUrl(location.href);
+    if (payment) history.replaceState(null, '', appUrl());
+    if (payment && (state.handledPayments || []).includes(payment.key)) return null;
+    return payment;
+  }
+
   // ---------- Start ----------
-  if (state.profile) screenHome(); else screenHook();
+  const incomingPayment = takePaymentFromUrl();
+  if (!state.profile) {
+    pendingPayment = incomingPayment;   // log it straight after onboarding
+    screenHook();
+  } else if (incomingPayment) {
+    screenLog(incomingPayment);
+  } else {
+    screenHome();
+  }
 })();
